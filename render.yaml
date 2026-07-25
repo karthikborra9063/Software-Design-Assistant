@@ -27,6 +27,14 @@ services:
       - key: WORKER_CONCURRENCY
         value: "1"               # keep memory bounded on the free 512MB instance
 
+      # --- Upload / archive limits (match local dev) ---
+      - key: MAX_UPLOAD_MB
+        value: "200"             # compressed ZIP size cap
+      - key: MAX_UNCOMPRESSED_MB
+        value: "600"             # uncompressed-size cap (zip-bomb guard)
+      - key: MAX_ARCHIVE_ENTRIES
+        value: "60000"           # total archive entries allowed
+
       # --- Database (Neon) + frontend origin: set in dashboard ---
       - key: DATABASE_URL
         sync: false
