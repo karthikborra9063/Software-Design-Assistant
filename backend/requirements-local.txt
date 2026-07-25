@@ -1,0 +1,6 @@
+# Dev/test extras (installed on top of the base requirements) — just the test runner.
+# Dev and prod use the same models (Jina + Groq), so there are no extra runtime deps.
+
+-r requirements.txt
+
+pytest>=8.0.0

@@ -1,0 +1,81 @@
+# Render Blueprint for the backend (native Python — no Docker).
+# Stack: Flask + LangChain RAG pipeline (PGVector on Neon, ChatGroq, Jina embeddings/reranker).
+# Create the service via Render → New → Blueprint, pointing at this repo.
+# Secrets (sync: false) are filled in the Render dashboard, never committed.
+
+services:
+  - type: web
+    name: aira-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    # Installs the LangChain stack + psycopg3 (still torch-free — no local models).
+    buildCommand: pip install -r requirements.txt
+    # init-db is idempotent (CREATE EXTENSION IF NOT EXISTS + create_all). PGVector creates its
+    # own per-project collections lazily on first index. Running init-db on every boot is safe.
+    startCommand: FLASK_APP=app flask init-db && gunicorn -w 1 --threads 4 -t 300 wsgi:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.2"          # matches the tested local version (dev/prod parity)
+      - key: APP_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: WORKER_CONCURRENCY
+        value: "1"               # keep memory bounded on the free 512MB instance
+
+      # --- Database (Neon) + frontend origin: set in dashboard ---
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false              # e.g. https://your-app.vercel.app
+
+      # --- Embeddings: Jina (hosted, no local model) ---
+      - key: EMBED_BASE_URL
+        value: https://api.jina.ai/v1
+      - key: EMBED_API_KEY
+        sync: false
+      - key: EMBED_MODEL
+        value: jina-embeddings-v3
+      - key: EMBED_DIM
+        value: "1024"
+
+      # --- LLM cascade: Groq (same key reused across all four; set the key in dashboard) ---
+      - key: LLM_1_PROVIDER
+        value: groq
+      - key: LLM_1_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_1_API_KEY
+        sync: false
+      - key: LLM_1_MODEL
+        value: qwen/qwen3.6-27b
+      - key: LLM_1_REASONING_EFFORT
+        value: none              # Qwen3 reasoning model → answer directly, no <think>
+
+      - key: LLM_2_PROVIDER
+        value: groq
+      - key: LLM_2_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_2_API_KEY
+        sync: false
+      - key: LLM_2_MODEL
+        value: openai/gpt-oss-120b
+      - key: LLM_3_PROVIDER
+        value: groq
+      - key: LLM_3_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_3_API_KEY
+        sync: false
+      - key: LLM_3_MODEL
+        value: llama-3.3-70b-versatile
+      - key: LLM_4_PROVIDER
+        value: groq
+      - key: LLM_4_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_4_API_KEY
+        sync: false
+      - key: LLM_4_MODEL
+        value: llama-3.1-8b-instant

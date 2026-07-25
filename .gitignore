@@ -1,0 +1,36 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+
+# ---- Secrets / environment ----
+# NEVER commit real secrets. Only .env.example (placeholder values) is tracked.
+.env
+*.env
+!.env.example
+
+# ---- Uploaded projects / temp data ----
+uploads/
+tmp/
+*.zip
+
+# ---- Model / embedding caches (BGE downloads here on first local run) ----
+.cache/
+huggingface/
+.ollama/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+build/
+.vite/
+
+# ---- OS / IDE ----
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,41 @@
+# Runtime requirements — installed in BOTH local and deployment (torch-free; no local models).
+# Tests additionally install requirements-local.txt (adds pytest).
+
+# ---- Web framework ----
+Flask==3.0.3
+Flask-Cors==4.0.1              # allow the Vercel frontend to call this API
+gunicorn==22.0.0              # production WSGI server (Render)
+
+# ---- Database / ORM / migrations ----
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.7          # Alembic integration
+SQLAlchemy==2.0.31
+psycopg2-binary==2.9.10       # PostgreSQL driver (Neon); 2.9.10 ships Python 3.13 wheels
+pgvector==0.3.2               # required by langchain-postgres (PGVector store)
+
+# ---- Auth ----
+Flask-JWT-Extended==4.6.0     # JWT create/validate
+# (password hashing uses werkzeug.security — ships with Flask, no extra dep)
+
+# ---- Config ----
+python-dotenv==1.0.1          # load backend/.env in local dev
+
+# ---- Indexing (syntax-aware chunking) ----
+tree-sitter>=0.22.0           # syntax-aware code parsing (lightweight C ext)
+tree-sitter-language-pack>=0.2.0  # bundled grammars (Python, JS, TS, Java, Go, C/C++, Ruby, Rust, ...)
+
+# ---- RAG pipeline (LangChain) ----
+# The retrieval pipeline is built on LangChain's standard components: PGVector for the vector
+# store, ChatGroq for the LLM cascade, and the Jina reranker as a document compressor. The
+# pieces are composed with LCEL (langchain-core Runnables).
+langchain==1.3.14
+langchain-core==1.5.1
+langchain-groq==1.1.3           # ChatGroq (Groq LLMs, OpenAI-compatible)
+langchain-postgres==0.0.17      # PGVector vector store on Neon Postgres
+langchain-community==0.4.2      # JinaRerank cross-encoder document compressor
+psycopg[binary]==3.3.4          # psycopg3 driver required by langchain-postgres
+
+# ---- Embedding client ----
+# Our embeddings wrapper calls Jina's OpenAI-compatible endpoint via the OpenAI SDK, adding a
+# shared tokens-per-minute throttle (LangChain's built-in embedders have no such throttle).
+openai>=1.40.0
