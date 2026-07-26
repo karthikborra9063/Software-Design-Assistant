@@ -29,7 +29,7 @@ export default function Auth() {
   return (
     <div className="center">
       <form className="card auth-card" onSubmit={submit}>
-        <h1 className="brand">aiRA</h1>
+        <h1 className="brand">DesignMind</h1>
         <p className="muted">Ask natural-language questions about any codebase.</p>
 
         {mode === "register" && (

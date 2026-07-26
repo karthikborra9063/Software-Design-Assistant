@@ -1,14 +1,18 @@
-// Chat view: loads history, streams answers token-by-token, and shows citations + a short
-// "why these sources" note under each answer.
+// Chat view: loads history and streams answers token-by-token, rendered as Markdown.
+// Source file locations appear inline in the answer (the model's "Implemented in …" line).
 
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
+import Markdown from "./Markdown";
+import { useToast } from "./Toast";
 
 export default function Chat({ project }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const endRef = useRef(null);
+  const abortRef = useRef(null);
+  const toast = useToast();
 
   // Load history when the selected project changes.
   useEffect(() => {
@@ -18,7 +22,7 @@ export default function Chat({ project }) {
       const msgs = [];
       chats.forEach((c) => {
         msgs.push({ role: "user", content: c.question });
-        msgs.push({ role: "assistant", content: c.answer || "", citations: c.citations || [] });
+        msgs.push({ role: "assistant", content: c.answer || "" });
       });
       setMessages(msgs);
     });
@@ -28,6 +32,13 @@ export default function Chat({ project }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const patchLast = (patch) =>
+    setMessages((m) => {
+      const copy = [...m];
+      copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch };
+      return copy;
+    });
+
   const send = async () => {
     const q = input.trim();
     if (!q || streaming) return;
@@ -35,19 +46,15 @@ export default function Chat({ project }) {
     setMessages((m) => [
       ...m,
       { role: "user", content: q },
-      { role: "assistant", content: "", citations: [], explanation: "", streaming: true },
+      { role: "assistant", content: "", streaming: true },
     ]);
     setStreaming(true);
 
-    const patchLast = (patch) =>
-      setMessages((m) => {
-        const copy = [...m];
-        copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch };
-        return copy;
-      });
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     await api.askStream(project.id, q, {
-      onMeta: (e) => patchLast({ citations: e.citations, explanation: e.explanation }),
+      signal: controller.signal,
       onToken: (t) =>
         setMessages((m) => {
           const copy = [...m];
@@ -55,7 +62,7 @@ export default function Chat({ project }) {
           copy[copy.length - 1] = { ...last, content: last.content + t };
           return copy;
         }),
-      onDone: (e) => patchLast({ streaming: false, model: e.model }),
+      onDone: () => patchLast({ streaming: false }),
       onError: (err) =>
         setMessages((m) => {
           const copy = [...m];
@@ -65,7 +72,21 @@ export default function Chat({ project }) {
           return copy;
         }),
     });
+
+    abortRef.current = null;
+    patchLast({ streaming: false }); // also covers a user-initiated stop
     setStreaming(false);
+  };
+
+  const stop = () => abortRef.current?.abort();
+
+  const copyAnswer = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Answer copied", "success");
+    } catch {
+      toast("Copy failed", "error");
+    }
   };
 
   const onKey = (e) => {
@@ -81,7 +102,6 @@ export default function Chat({ project }) {
     <div className="chat">
       <header className="chat-head">
         <h2>{project.name}</h2>
-        <span className="muted small">{project.language || "project"} · {project.total_chunks} chunks</span>
       </header>
 
       <div className="messages">
@@ -94,7 +114,17 @@ export default function Chat({ project }) {
         {messages.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
             <div className="bubble">
-              {m.content || (m.streaming ? <span className="muted">…</span> : "")}
+              {m.role === "assistant" && !m.streaming && m.content && (
+                <button className="answer-copy" onClick={() => copyAnswer(m.content)}>Copy</button>
+              )}
+              {m.role === "assistant" ? (
+                <>
+                  {m.content && <Markdown>{m.content}</Markdown>}
+                  {m.streaming && <span className="cursor" />}
+                </>
+              ) : (
+                m.content
+              )}
             </div>
           </div>
         ))}
@@ -116,9 +146,11 @@ export default function Chat({ project }) {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKey}
           />
-          <button className="primary" onClick={send} disabled={streaming || !input.trim()}>
-            {streaming ? "…" : "Ask"}
-          </button>
+          {streaming ? (
+            <button className="stop" onClick={stop}>Stop</button>
+          ) : (
+            <button className="primary" onClick={send} disabled={!input.trim()}>Ask</button>
+          )}
         </div>
       )}
     </div>
