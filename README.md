@@ -9,7 +9,7 @@ is the payment flow?"*, *"Which APIs create users?"*, *"Explain the architecture
 should I change to add a feature?"*, *"How is data stored?"*, *"Summarize the project structure"* —
 plus meta questions like *"How many files are in this project?"* and *"What languages are used?"*.
 
-**Live demo (frontend):** `https://<your-app>.vercel.app`
+**Live demo (frontend):** [`https://software-design-assistant.vercel.app`](https://software-design-assistant.vercel.app)
 **Backend health:** [`https://aira-backend-ur3p.onrender.com/api/health`](https://aira-backend-ur3p.onrender.com/api/health)
 **No demo credentials needed** — just register an account on the site.
 

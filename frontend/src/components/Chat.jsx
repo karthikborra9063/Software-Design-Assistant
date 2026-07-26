@@ -29,7 +29,8 @@ export default function Chat({ project }) {
   }, [project.id, project.status]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Instant (not smooth) so rapid token updates don't stutter the scroll.
+    endRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages]);
 
   const patchLast = (patch) =>
@@ -118,10 +119,13 @@ export default function Chat({ project }) {
                 <button className="answer-copy" onClick={() => copyAnswer(m.content)}>Copy</button>
               )}
               {m.role === "assistant" ? (
-                <>
-                  {m.content && <Markdown>{m.content}</Markdown>}
-                  {m.streaming && <span className="cursor" />}
-                </>
+                m.streaming ? (
+                  // While streaming, render raw text (no per-token Markdown re-parse/
+                  // re-highlight flicker); switch to full Markdown once the answer completes.
+                  <div className="streaming-text">{m.content}<span className="cursor" /></div>
+                ) : (
+                  <Markdown>{m.content}</Markdown>
+                )
               ) : (
                 m.content
               )}

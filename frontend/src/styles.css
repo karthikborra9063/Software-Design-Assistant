@@ -127,6 +127,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* ---- Markdown answers ---- */
 .msg.assistant .bubble { white-space: normal; }
+.streaming-text { white-space: pre-wrap; word-wrap: break-word; }
 .md > *:first-child { margin-top: 0; }
 .md > *:last-child { margin-bottom: 0; }
 .md h1, .md h2, .md h3, .md h4 { margin: 14px 0 8px; line-height: 1.3; }
