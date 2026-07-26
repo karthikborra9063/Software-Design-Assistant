@@ -1,13 +1,17 @@
+import "highlight.js/styles/github-dark.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { AuthProvider } from "./AuthContext";
+import { ToastProvider } from "./components/Toast";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </ToastProvider>
   </React.StrictMode>
 );

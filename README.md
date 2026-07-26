@@ -1,154 +1,270 @@
-# aiRA — AI Software Design Assistant
+# DesignMind — AI Software Design Assistant
 
-Upload a software project (ZIP) and ask natural-language questions about it. aiRA indexes the
-codebase with a Retrieval-Augmented Generation (RAG) pipeline and answers with **citations to
-the source files** plus the retrieved evidence, so you can see *why* it answered.
+DesignMind is an AI-powered assistant that helps developers understand unfamiliar software projects.
 
-**Live demo:** _<add your Vercel URL here after deploying>_ &nbsp;·&nbsp; **API:** _<Render URL>/api/health_
+Upload a source-code archive (`.zip`) and ask natural-language questions about the codebase. The
+system indexes the project with a Retrieval-Augmented Generation (RAG) pipeline and answers
+**grounded in the actual source code**, citing the relevant files — so you can see *why* it answered.
 
-> Design rationale: [`HLD-v2.md`](HLD-v2.md). Architecture write-up: [`ARCHITECTURE.md`](ARCHITECTURE.md).
-> Implementation reference: [`IMPLEMENTATION.md`](IMPLEMENTATION.md).
-> No demo credentials are needed — just register an account on the site.
+---
 
-## Stack (all free-tier, no Docker)
-Local dev and production use the **same models** — only `DATABASE_URL` / `APP_ENV` /
-`FRONTEND_ORIGIN` differ.
+## Demo
+
+🌐 **Frontend:** https://software-design-assistant.vercel.app
+
+🩺 **Backend health:** https://aira-backend-ur3p.onrender.com/api/health
+
+No demo credentials are required — simply register an account and upload a project.
+
+---
+
+## Features
+
+- Upload software projects as ZIP archives
+- Background indexing with live status updates
+- AI-powered codebase question answering, grounded in the source with **file citations**
+- Context-aware **follow-up conversations** (project-level memory)
+- **Markdown-formatted** answers with syntax-highlighted, copyable code
+- Indexes code **and** docs, config, and **HTML/CSS** — with intelligent Tree-sitter chunking
+- **Repository insight / metadata queries** — project structure & file tree, file count, languages used
+- Secure **JWT authentication**
+- Handles large repositories, malformed archives, and rate limits gracefully
+
+---
+
+## Example Questions
+
+**Architecture**
+- Explain the overall architecture.
+- How does authentication work?
+- How is data stored and retrieved?
+- Summarize the project structure.
+
+**Code navigation**
+- Where is the payment flow implemented?
+- Which APIs create users?
+- Which files implement authentication?
+- Where is the JWT verified?
+
+**Development**
+- Which files should I modify to add feature X?
+- Trace the login flow.
+- Which modules are responsible for image uploads?
+- Explain how user registration works.
+
+**Repository insights**
+- How many files are in this project?
+- What languages are used?
+- List the main files in the project.
+
+---
+
+## How It Works
+
+```
+            Upload ZIP
+                 │
+                 ▼
+        Extract source files            (safe: path-traversal + zip-bomb guards)
+                 │
+                 ▼
+      Tree-sitter code chunking          (docs/config/HTML/CSS → line-window fallback)
+                 │
+                 ▼
+      Generate Jina embeddings           (batched, rate-limit throttled)
+                 │
+                 ▼
+      Store in PGVector (Neon)           + build a zero-LLM repo map (tree, signatures, stats)
+                 │
+                 ▼
+        User asks a question             (follow-ups reformulated using recent turns)
+                 │
+                 ▼
+     Semantic retrieval (PGVector)
+                 │
+                 ▼
+      Jina cross-encoder rerank          → top-K  (+ context card for broad/meta questions)
+                 │
+                 ▼
+        Groq LLM generates answer        (streamed)
+                 │
+                 ▼
+     Response + source citations
+```
+
+---
+
+## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React (Vite) → Vercel |
-| Backend + worker | Flask (native Python) → Render (`gunicorn`) |
-| Job queue | Postgres-as-queue (no Redis) |
-| DB + vectors | Neon PostgreSQL + pgvector (separate DB per env) |
-| Parsing | Tree-sitter (+ fallback chunker) |
-| Framework | LangChain (RAG pipeline) |
-| Retrieval | LangChain PGVector (pgvector) + Jina cross-encoder reranker |
-| **Embeddings** | **Jina** `jina-embeddings-v3` (1024-dim), via a LangChain Embeddings wrapper |
-| **LLM** | LangChain **ChatGroq** cascade: qwen3.6-27b → gpt-oss-120b → llama-3.3-70b → llama-3.1-8b |
+| Frontend | React + Vite → Vercel |
+| Backend + worker | Flask (native Python) → Render |
+| Authentication | JWT |
+| Database | PostgreSQL (Neon) |
+| Vector store | pgvector (via LangChain PGVector) |
+| Job queue | PostgreSQL job queue (no Redis/Celery) |
+| Parsing / chunking | Tree-sitter (+ line-window fallback) |
+| Embeddings | Jina Embeddings v3 (1024-dim) |
+| Retrieval framework | LangChain |
+| Reranking | Jina cross-encoder |
+| LLM | Groq — `ChatGroq` model cascade with automatic fallback |
 
-One codebase, one set of models everywhere — full dev/prod parity.
+The application runs the **same code in development and production** — only environment variables differ.
 
-## Repository layout
+---
+
+## Repository Structure
+
 ```
-aira/
+Software-Design-Assistant/
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py         # Flask application factory
-│   │   ├── config.py           # all config from env (APP_ENV, embeddings, LLM cascade)
-│   │   ├── extensions.py       # db / migrate / jwt / cors singletons
-│   │   ├── models/             # SQLAlchemy models (user, project, chat, job)
-│   │   ├── indexing/           # extraction, files, Tree-sitter chunking, repo map
-│   │   ├── services/           # embedding, vectorstore, retrieval, prompt, llm, qa, indexing
-│   │   └── api/                # HTTP blueprints (health, auth, projects, chat)
-│   ├── wsgi.py                 # entrypoint (gunicorn / dev server)
-│   ├── requirements.txt        # runtime deps (torch-free)
-│   ├── requirements-local.txt  # + pytest for running the tests
-│   └── .env.example            # copy to .env (gitignored) — Jina + Groq
-└── frontend/                  # React + Vite SPA
-    ├── src/
-    │   ├── api.js              # API client (incl. SSE-over-fetch reader)
-    │   ├── AuthContext.jsx     # JWT/auth state
-    │   ├── App.jsx             # auth screen vs dashboard
-    │   └── components/         # Auth, Dashboard, Sidebar, Chat (+ citations)
-    ├── vite.config.js          # dev proxy /api -> backend
-    └── .env.example            # VITE_API_URL (prod backend URL)
+│   │   ├── api/            # HTTP blueprints: health, auth, projects, chat
+│   │   ├── indexing/       # extraction, file classification, chunking, repo map
+│   │   ├── models/         # SQLAlchemy models: user, project, chat, job
+│   │   ├── services/       # embedding, vectorstore, retrieval, prompt, llm, qa, queue
+│   │   ├── worker.py       # background indexing worker
+│   │   ├── config.py       # all configuration from environment variables
+│   │   └── __init__.py     # Flask application factory
+│   ├── requirements.txt
+│   └── wsgi.py             # entrypoint (gunicorn / dev server)
+├── frontend/               # React + Vite SPA
+├── ARCHITECTURE.md         # system design, decisions, trade-offs, challenges, future work
+├── render.yaml             # Render deployment blueprint
+└── README.md
 ```
 
-## Prerequisites (all free)
-1. **Neon** Postgres — https://neon.tech (use a **separate DB/branch** for local vs prod).
-2. **Jina** embedding key — https://jina.ai/embeddings
-3. **Groq** API key — https://console.groq.com
+---
 
-## Run locally (no Docker)
-```powershell
-cd "aira\backend"
+## Local Setup
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/karthikborra9063/Software-Design-Assistant.git
+cd Software-Design-Assistant
+```
+
+### 2. Get free API keys (no credit card required)
+- **Neon** PostgreSQL — https://neon.tech (copy the *pooled* connection string)
+- **Jina AI** embeddings — https://jina.ai/embeddings
+- **Groq** API — https://console.groq.com
+
+### 3. Backend
+```bash
+cd backend
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1            # if blocked: Set-ExecutionPolicy -Scope Process RemoteSigned
-pip install -r requirements.txt         # runtime deps (add -r requirements-local.txt for tests)
 
-Copy-Item .env.example .env             # set DATABASE_URL (Neon), EMBED_API_KEY (Jina),
-                                        # LLM_*_API_KEY (Groq), SECRET_KEY, JWT_SECRET.
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
 
-$env:FLASK_APP = "app"                  # one-time DB setup: enable pgvector + create tables
-flask init-db                           # -> "Initialized database ... (vector dim=1024)."
+pip install -r requirements.txt
 
-python wsgi.py                          # runs the API + background worker
-# verify: http://localhost:5000/api/health  ->  {"status":"ok","service":"aira-backend"}
+# create your .env from the template, then fill in the values from step 2
+cp .env.example .env        # Windows: copy .env.example .env
+#   DATABASE_URL, EMBED_API_KEY, LLM_1..4_API_KEY, SECRET_KEY, JWT_SECRET
+
+# one-time: enable pgvector + create tables
+export FLASK_APP=app        # Windows: set FLASK_APP=app
+flask init-db
+
+python wsgi.py              # API + background worker → http://localhost:5000
+# verify: http://localhost:5000/api/health  →  {"status":"ok","service":"aira-backend"}
 ```
-(macOS/Linux: `source .venv/bin/activate`, `cp .env.example .env`, `export FLASK_APP=app`.)
 
-Run `flask init-db` once per database (once for your local Neon dev branch, once for prod).
-
-## Run the frontend (local)
-```powershell
-cd "aira\frontend"
+### 4. Frontend
+```bash
+cd frontend
 npm install
-npm run dev        # http://localhost:5173  (Vite proxies /api to the backend on :5000)
+npm run dev                 # http://localhost:5173  (Vite proxies /api to the backend)
 ```
-Register an account, upload a codebase `.zip`, wait for status **Ready**, then ask questions.
+Open http://localhost:5173, register, upload a project `.zip`, wait for **Ready**, then ask questions.
 
-## Deployment (Render — native Python, no Docker)
-- **Build:** `pip install -r requirements.txt` (torch-free)
-- **Start:** `gunicorn -w 1 --threads 4 -t 300 wsgi:app`
-- Env vars set in the Render dashboard: `APP_ENV=production`, `EMBED_API_KEY` (Jina), the Groq
-  LLM cascade keys, `DATABASE_URL` (Neon), `FRONTEND_ORIGIN` (Vercel URL). Most non-secret
-  values are prefilled by `render.yaml`.
+### Running tests
+```bash
+cd backend
+pip install -r requirements-local.txt
+pytest
+```
 
-### Deploy the backend (Render)
-1. Push this repo to GitHub. In Render → **New → Blueprint**, select the repo; it reads
-   [`render.yaml`](render.yaml) (native Python, no Docker).
-2. Fill the `sync: false` secrets in the dashboard: `DATABASE_URL` (a **separate** Neon `main`
-   branch — see note below), `FRONTEND_ORIGIN` (your Vercel URL), `EMBED_API_KEY` (Jina), and
-   `LLM_1..4_API_KEY` (the same Groq key in all four).
-3. Deploy. The start command runs `flask init-db` (idempotent) then gunicorn.
+---
 
-> **Note:** use a **separate Neon database/branch** for prod vs local so their data doesn't mix
-> (both are 1024-dim now, so the schema is identical either way).
+## Deployment & Hosting Choices
 
-### Deploy the frontend (Vercel)
-1. Vercel → **New Project** → import the repo, set **Root Directory = `frontend`**
-   (uses [`vercel.json`](frontend/vercel.json)).
-2. Set env var `VITE_API_URL` to the Render backend URL.
-3. Deploy, then set the backend's `FRONTEND_ORIGIN` to the resulting Vercel URL.
+Deployed across four free services — chosen so the whole system costs **$0**, needs **no Docker**,
+and keeps each concern independently swappable:
 
-## Environment variables
-| Var | Where | Notes |
+| Piece | Host | Why |
 |---|---|---|
-| `APP_ENV` | both | `development` / `production` (controls CORS + debug) |
-| `DATABASE_URL` | both | Neon connection string (use the **pooled** endpoint) |
-| `SECRET_KEY`, `JWT_SECRET` | both | random strings (Render can auto-generate) |
-| `FRONTEND_ORIGIN` | prod | Vercel URL, for CORS lockdown |
-| `EMBED_BASE_URL` / `EMBED_MODEL` / `EMBED_DIM` | both | `https://api.jina.ai/v1` / `jina-embeddings-v3` / `1024` |
-| `EMBED_API_KEY` | both | Jina key |
-| `LLM_n_PROVIDER/BASE_URL/API_KEY/MODEL` | both | the Groq cascade (same key ×4) |
-| `WORKER_CONCURRENCY` | both | parallel indexing threads (default 1) |
-| `MAX_UPLOAD_MB`, `MAX_REPO_FILES`, `TOP_K`, `CONFIDENCE_THRESHOLD` | both | tuning knobs |
+| **Frontend** | **Vercel** | Purpose-built for React/Vite; global CDN, auto-deploys from GitHub, generous free tier. |
+| **Backend + worker** | **Render** (native Python) | Runs Flask + gunicorn + the in-process worker with no container to maintain; free web service. |
+| **Database + vectors** | **Neon** (serverless Postgres + pgvector) | One store for relational data *and* embeddings → no separate vector DB; free and persistent. |
+| **Embeddings** | **Jina API** | Hosted embeddings mean no PyTorch/model weights on the server → the backend fits Render's 512 MB free tier. |
+| **LLM** | **Groq API** | Fast, free inference; per-model daily limits are multiplied by a 4-model fallback cascade. |
+
+- **Backend (Render):** New → Blueprint → select this repo (it reads [`render.yaml`](render.yaml)); fill
+  the secret env vars; the start command runs `flask init-db` then `gunicorn`.
+- **Frontend (Vercel):** New Project → import repo → **Root Directory = `frontend`** → set
+  `VITE_API_URL` to the backend URL → deploy; then set the backend's `FRONTEND_ORIGIN` to the Vercel URL.
+- **Reproduce locally:** the *Local Setup* above is the **same code path** as production — only env values differ.
+
+### Environment variables (secrets excluded)
+| Variable | Notes |
+|---|---|
+| `APP_ENV` | `development` / `production` (controls CORS + debug) |
+| `DATABASE_URL` | Neon connection string (use the **pooled** endpoint) |
+| `SECRET_KEY`, `JWT_SECRET` | random strings |
+| `FRONTEND_ORIGIN` | allowed CORS origin in production (the Vercel URL; `*` for a quick demo) |
+| `EMBED_BASE_URL` / `EMBED_MODEL` / `EMBED_DIM` | `https://api.jina.ai/v1` / `jina-embeddings-v3` / `1024` |
+| `EMBED_API_KEY` | Jina key |
+| `LLM_n_PROVIDER/BASE_URL/API_KEY/MODEL` | the Groq model cascade (same key ×4) |
+| `WORKER_CONCURRENCY` | parallel indexing threads (default 1) |
+| `MAX_UPLOAD_MB` / `MAX_REPO_FILES` / `TOP_K` / `CONFIDENCE_THRESHOLD` | tuning knobs |
+
+---
+
+## Architecture
+
+The complete system architecture — indexing pipeline, retrieval flow, design decisions,
+trade-offs, challenges, and future improvements — is documented in **[`ARCHITECTURE.md`](ARCHITECTURE.md)**.
+
+---
 
 ## Assumptions
-- One project is active per chat session; cross-project search is out of scope (v1).
-- Uploaded projects are trusted-ish source archives (we still guard against zip bombs / path
-  traversal), zipped **without** dependencies/build output (`node_modules`, `.git`, `dist`).
-- The raw ZIP is not persisted — only extracted, indexed, then discarded.
-- Local and prod use the same models (Jina + Groq); both need internet + the two free API keys.
-  Groq's per-account quota is shared across environments (fine at evaluation traffic).
 
-## Known limitations
-- **Free-tier scale:** Neon ~0.5 GB storage (~10–20 medium projects); Render free instance
-  **sleeps when idle** (30–60s cold start) and is 512 MB RAM.
-- **Upload caps:** ZIP ≤ 50 MB; ≤ 2,000 indexable files (beyond that, a bounded subset is
-  indexed and a warning is logged); ≤ 20,000 total archive entries.
-- **Retrieval is vector + cross-encoder reranker** (no lexical BM25); exact-identifier matches
-  rely on embeddings + the reranker.
-- **Embedding rate limits** (Jina) can slow indexing of large repos in prod (absorbed by the
-  async queue).
-- Answers are only as good as retrieval; the model is instructed to say "not found" rather than
-  guess, so some questions may be declined.
+- Users upload source-code archives, ideally zipped **without** dependencies/build output
+  (`node_modules`, `.git`, `dist` — these are skipped anyway).
+- Archives exceeding the size/entry caps are **rejected**; a project exceeding the file cap is
+  indexed as a **bounded subset** (and flagged), never silently truncated.
+- Raw ZIP archives are **discarded after indexing** — only vectors + metadata are retained.
+- One project is active per conversation; cross-project search is out of scope for v1.
 
-## Future improvements
-Incremental re-indexing + GitHub import · optional hybrid BM25 via LangChain `EnsembleRetriever` ·
-cross-project search · per-user quotas/rate-limiting · a dedicated worker service for horizontal
-scale.
+## Known Limitations
 
-## Security note
-`.env` is gitignored. Never commit real API keys or database URLs. In production, secrets are
-provided via the Render dashboard, not the repo.
+- Render's free tier **sleeps when idle** → 30–60 s cold start on the first request.
+- Neon free tier has limited storage (~0.5 GB).
+- Retrieval is **semantic + cross-encoder rerank only** .
+- Heavy Groq usage may exceed the free daily token quota (mitigated by the model cascade).
+- Cross-project search is not supported.
+
+## Future Improvements
+
+- Incremental indexing · GitHub repository import
+- Hybrid retrieval (BM25 + vector) via LangChain `EnsembleRetriever`
+- Cross-project search · horizontal worker scaling
+- Rate limiting · per-user quotas
+- Clearer UI indicators when indexing is truncated
+
+---
+
+## Security
+
+- Environment variables and secrets are **never committed** (`.env` is gitignored).
+- JWT-based authentication; passwords stored only as pbkdf2 hashes.
+- ZIP-bomb and path-traversal protection during extraction.
+- Raw uploaded archives are discarded after indexing.
+
+---
+

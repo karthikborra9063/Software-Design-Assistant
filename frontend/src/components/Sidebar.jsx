@@ -1,8 +1,9 @@
-// Left panel: user identity + logout, an upload form, and the project list with live status.
+// Left panel: an upload form (with drag & drop) and the project list with live status.
+// (User identity + logout live in the top-bar ProfileMenu.)
 
 import { useState } from "react";
 import { api } from "../api";
-import { useAuth } from "../AuthContext";
+import { useToast } from "./Toast";
 
 const STATUS_LABEL = {
   UPLOADING: "Uploading",
@@ -12,27 +13,46 @@ const STATUS_LABEL = {
 };
 
 function StatusBadge({ status }) {
-  return <span className={`badge badge-${status?.toLowerCase()}`}>{STATUS_LABEL[status] || status}</span>;
+  const spinning = status === "UPLOADING" || status === "INDEXING";
+  return (
+    <span className={`badge badge-${status?.toLowerCase()}`}>
+      {spinning && <span className="spinner" />}
+      {STATUS_LABEL[status] || status}
+    </span>
+  );
 }
 
 export default function Sidebar({ projects, selectedId, onSelect, onChanged, onDeleted }) {
-  const { user, logout } = useAuth();
   const [name, setName] = useState("");
   const [file, setFile] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const toast = useToast();
+
+  const pickZip = (files) => {
+    const zip = [...(files || [])].find((f) => f.name.toLowerCase().endsWith(".zip"));
+    if (zip) {
+      setFile(zip);
+      setError("");
+    } else {
+      setError("Please choose a .zip file.");
+    }
+  };
 
   const upload = async (e) => {
     e.preventDefault();
     setError("");
+    if (!name.trim()) return setError("Project name is required.");
     if (!file) return setError("Choose a .zip file.");
     setBusy(true);
     try {
-      await api.uploadProject(name || file.name.replace(/\.zip$/i, ""), file);
+      await api.uploadProject(name.trim(), file);
       setName("");
       setFile(null);
-      e.target.reset();
       onChanged();
+      toast("Upload successful. Indexing started.", "success", 5000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -40,34 +60,36 @@ export default function Sidebar({ projects, selectedId, onSelect, onChanged, onD
     }
   };
 
-  const remove = async (id, e) => {
-    e.stopPropagation();
-    if (!confirm("Delete this project and its index?")) return;
+  const confirmDelete = async () => {
+    const id = pendingDelete;
+    setPendingDelete(null);
     try {
       await api.deleteProject(id);
       onDeleted(id);
+      toast("Project deleted", "success");
     } catch (err) {
-      alert(err.message);
+      toast(err.message, "error");
     }
   };
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-head">
-        <h1 className="brand">aiRA</h1>
-        <div className="user">
-          <span className="muted small">{user?.email}</span>
-          <a className="small" onClick={logout}>Log out</a>
-        </div>
-      </div>
-
       <form className="upload" onSubmit={upload}>
         <input
-          placeholder="Project name (optional)"
+          placeholder="Project name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          required
         />
-        <input type="file" accept=".zip" onChange={(e) => setFile(e.target.files[0])} />
+        <label
+          className={`dropzone ${dragging ? "drag" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); pickZip(e.dataTransfer.files); }}
+        >
+          <input type="file" accept=".zip" hidden onChange={(e) => pickZip(e.target.files)} />
+          <span className="small">{file ? file.name : "Drag & drop a .zip here, or click to browse"}</span>
+        </label>
         {error && <div className="error small">{error}</div>}
         <button className="primary" disabled={busy}>{busy ? "Uploading…" : "Upload project"}</button>
       </form>
@@ -82,20 +104,32 @@ export default function Sidebar({ projects, selectedId, onSelect, onChanged, onD
           >
             <div className="project-top">
               <span className="project-name">{p.name}</span>
-              <a className="del" onClick={(e) => remove(p.id, e)} title="Delete">×</a>
+              <a
+                className="del"
+                onClick={(e) => { e.stopPropagation(); setPendingDelete(p.id); }}
+                title="Delete"
+              >×</a>
             </div>
             <div className="project-meta">
               <StatusBadge status={p.status} />
-              {p.status === "READY" && (
-                <span className="muted small">
-                  {p.total_files} files · {p.total_chunks} chunks{p.language ? ` · ${p.language}` : ""}
-                </span>
-              )}
               {p.status === "FAILED" && <span className="error small">{p.failure_reason}</span>}
             </div>
           </div>
         ))}
       </div>
+
+      {pendingDelete != null && (
+        <div className="modal-overlay" onClick={() => setPendingDelete(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete project?</h3>
+            <p className="muted small">This removes the project and its index. This can't be undone.</p>
+            <div className="modal-actions">
+              <button className="ghost" onClick={() => setPendingDelete(null)}>Cancel</button>
+              <button className="danger" onClick={confirmDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import Chat from "./Chat";
+import ProfileMenu from "./ProfileMenu";
 import Sidebar from "./Sidebar";
 
 export default function Dashboard() {
@@ -36,29 +37,44 @@ export default function Dashboard() {
   const selected = projects.find((p) => p.id === selectedId) || null;
 
   return (
-    <div className="layout">
-      <Sidebar
-        projects={projects}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onChanged={refresh}
-        onDeleted={(id) => {
-          if (id === selectedId) setSelectedId(null);
-          refresh();
-        }}
-      />
-      <main className="main">
-        {selected ? (
-          <Chat project={selected} />
-        ) : (
-          <div className="center muted">
-            <div>
-              <h2>Select or upload a project</h2>
-              <p>Upload a codebase (.zip) on the left, then ask questions once it's ready.</p>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand-mark">
+          <span className="brand-logo">
+            <img
+              src="/logo.png"
+              alt=""
+              onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
+            />
+          </span>
+          <span>DesignMind</span>
+        </div>
+        <ProfileMenu />
+      </header>
+      <div className="layout">
+        <Sidebar
+          projects={projects}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onChanged={refresh}
+          onDeleted={(id) => {
+            if (id === selectedId) setSelectedId(null);
+            refresh();
+          }}
+        />
+        <main className="main">
+          {selected ? (
+            <Chat project={selected} />
+          ) : (
+            <div className="center muted">
+              <div>
+                <h2>Select or upload a project</h2>
+                <p>Upload a codebase (.zip) on the left, then ask questions once it's ready.</p>
+              </div>
             </div>
-          </div>
-        )}
-      </main>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

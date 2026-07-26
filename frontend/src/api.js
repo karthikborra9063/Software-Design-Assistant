@@ -54,15 +54,17 @@ export const api = {
   history: (id) => fetch(`${API}/api/projects/${id}/chats`, { headers: authHeaders() }).then(handle),
 
   // Consume the SSE stream frame-by-frame, dispatching typed events to callbacks.
-  askStream: async (id, question, { onMeta, onToken, onDone, onError }) => {
+  askStream: async (id, question, { onMeta, onToken, onDone, onError, signal }) => {
     let res;
     try {
       res = await fetch(`${API}/api/projects/${id}/ask/stream`, {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
+        signal,
       });
     } catch (e) {
+      if (e.name === "AbortError") return; // user stopped generation
       onError(`Network error: ${e.message}`);
       return;
     }
@@ -80,27 +82,31 @@ export const api = {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let idx;
-      while ((idx = buffer.indexOf("\n\n")) >= 0) {
-        const frame = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const line = frame.split("\n").find((l) => l.startsWith("data:"));
-        if (!line) continue;
-        let evt;
-        try {
-          evt = JSON.parse(line.slice(5).trim());
-        } catch {
-          continue;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\n\n")) >= 0) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const line = frame.split("\n").find((l) => l.startsWith("data:"));
+          if (!line) continue;
+          let evt;
+          try {
+            evt = JSON.parse(line.slice(5).trim());
+          } catch {
+            continue;
+          }
+          if (evt.type === "meta") onMeta?.(evt);
+          else if (evt.type === "token") onToken?.(evt.text);
+          else if (evt.type === "done") onDone?.(evt);
+          else if (evt.type === "error") onError?.(evt.error);
         }
-        if (evt.type === "meta") onMeta?.(evt);
-        else if (evt.type === "token") onToken?.(evt.text);
-        else if (evt.type === "done") onDone?.(evt);
-        else if (evt.type === "error") onError?.(evt.error);
       }
+    } catch (e) {
+      if (e.name !== "AbortError") onError?.(`Stream error: ${e.message}`);
     }
   },
 };
