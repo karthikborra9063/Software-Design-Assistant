@@ -1,4 +1,4 @@
-# aiRA — Architecture Document
+# DesignMind — Architecture Document
 
 ## 1. Problem & approach
 
@@ -31,10 +31,12 @@ and prod. Local and production differ only in environment variables (`DATABASE_U
 
 ## 3. Major components
 
-**Frontend (React + Vite).** Auth screen, project dashboard with upload and live indexing
-status (polls while a project is `INDEXING`), and a streaming chat with a citations/evidence
-panel. Consumes the SSE stream via `fetch` + `ReadableStream` (the stream endpoint is an
-authenticated POST, which `EventSource` can't do).
+**Frontend (React + Vite).** A top bar (brand + profile menu), a sidebar (drag-and-drop upload +
+live project status, polled while `INDEXING`), and a streaming chat. Answers render as
+**Markdown** with syntax-highlighted, copyable code blocks; the source file(s) appear inline at
+the end of each answer. Streaming can be stopped mid-generation. Consumes the SSE stream via
+`fetch` + `ReadableStream` (the stream endpoint is an authenticated POST, which `EventSource`
+can't do).
 
 **API (Flask, app-factory).** Blueprints for auth, projects, and chat. JWT auth; a consistent
 JSON error layer (`ApiError`); CORS locked to the frontend origin in prod. Thin routes delegate
@@ -51,15 +53,19 @@ immediately after saving the ZIP and enqueuing a `jobs` row. A worker thread cla
 bounded; a boot-recovery sweep requeues jobs left `RUNNING` by a crash/restart. No Redis/Celery.
 
 **Indexing pipeline.** Safe ZIP extraction (path-traversal + zip-bomb guards) → file
-classification (skip vendored/binary) → chunking (Tree-sitter syntax-aware for 10 languages,
-line-window fallback otherwise, so no file is dropped) → chunks become LangChain `Document`s
-added to the project's PGVector collection (batched) → repo map (file tree + per-file signatures
-+ README/frameworks, built with **zero LLM calls**).
+classification (code, docs, config, **stylesheets & markup**; skip vendored, binary, lock, and
+minified files) → chunking (Tree-sitter syntax-aware for 10 languages; docs/config/CSS/HTML and
+any unparseable file fall back to overlapping line windows, so no file is dropped) → chunks become
+LangChain `Document`s added to the project's PGVector collection (batched) → a **repo map** (file
+tree, per-file signatures, README/frameworks, and **project stats** — file/function counts,
+language mix) built with **zero LLM calls**.
 
 **Retrieval.** PGVector cosine similarity returns a candidate pool, then a **Jina cross-encoder
 reranker** (LangChain `JinaRerank`) reorders it and keeps the top-K. A **confidence check** (max
-cosine similarity + a breadth heuristic) decides whether to attach the structural context card —
-not a brittle keyword router.
+cosine similarity + a breadth/meta heuristic) decides whether to attach the structural context
+card — not a brittle keyword router. **Meta/aggregate questions** ("how many files", "what
+languages", "list the files") are routed to the card, whose precomputed stats + file tree answer
+questions that vector search fundamentally can't.
 
 **LLM cascade.** LangChain **ChatGroq** drives the Groq cascade: the primary model is built with
 `.with_fallbacks([...])`, so LangChain auto-fails-over to the next model on error. Groq limits are
@@ -70,8 +76,9 @@ per-model, so the 4-model chain multiplies effective free throughput.
 **Upload → index:** `POST /api/projects` saves ZIP → enqueues job → returns 202. Worker:
 extract → chunk → embed (batched) → store → build repo map → `READY` (or `FAILED` with reason).
 
-**Ask (per question, HLD §2.1):** embed query → PGVector similarity pool → rerank → confidence check →
-(if weak/broad) attach context card / repo map → build a context-constrained prompt → stream
+**Ask (per question):** (for a follow-up, first reformulate it into a standalone query using the
+recent turns) → embed query → PGVector similarity pool → rerank → confidence/meta check →
+(if weak/broad/meta) attach context card / repo map → build a context-constrained prompt → stream
 the answer from the cascade → return citations (file, lines, score, snippet) + a "why these
 sources" note → persist the turn.
 
@@ -85,6 +92,8 @@ sources" note → persist the turn.
 | pgvector in Postgres | Free, persistent, one fewer service | Not a specialized vector DB (fine at this scale) |
 | Postgres-as-queue (not Celery/Redis) | Durable async on one free box, no extra service | Polling latency; not a full broker |
 | Confidence-based context (not keyword routing) | Robust to any phrasing | A tuned threshold, not a learned classifier |
+| Precomputed project facts in the card | Answers count/list/language questions vector search can't | Stats recomputed only on (re-)index |
+| History-aware query reformulation | Follow-ups resolve without polluting retrieval | One extra cheap LLM call per follow-up |
 | Jina embeddings (dev == prod) | Removes PyTorch → runs on a free non-Docker host; full parity | Network hop + embedding-API rate limits |
 | Render native Python (not Docker/HF) | Simplest free deploy, no container to maintain | Free tier sleeps (cold starts) |
 | Same models dev == prod | One code path, full parity, no "works locally, breaks in prod" | Dev needs the API keys; shares Groq's per-account quota |
