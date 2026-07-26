@@ -29,7 +29,16 @@ export default function Auth() {
   return (
     <div className="center">
       <form className="card auth-card" onSubmit={submit}>
-        <h1 className="brand">DesignMind</h1>
+        <div className="auth-brand">
+          <span className="auth-logo">
+            <img
+              src="/logo.png"
+              alt=""
+              onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }}
+            />
+          </span>
+          <h1 className="brand">DesignMind</h1>
+        </div>
         <p className="muted">Ask natural-language questions about any codebase.</p>
 
         {mode === "register" && (

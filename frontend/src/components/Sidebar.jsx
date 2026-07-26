@@ -52,7 +52,7 @@ export default function Sidebar({ projects, selectedId, onSelect, onChanged, onD
       setName("");
       setFile(null);
       onChanged();
-      toast("Upload started — indexing in the background", "success");
+      toast("Upload successful. Indexing started.", "success", 5000);
     } catch (err) {
       setError(err.message);
     } finally {
