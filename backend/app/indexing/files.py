@@ -22,6 +22,10 @@ CODE_LANGUAGES = {
 }
 
 DOC_EXTS = {".md", ".mdx", ".rst", ".txt", ".adoc"}
+# Frontend pillars: stylesheets and markup. No functions/classes to parse, so they are
+# window-chunked as text (see chunking.py), which is enough to make them searchable.
+STYLE_EXTS = {".css", ".scss", ".sass", ".less"}
+MARKUP_EXTS = {".html", ".htm"}
 CONFIG_EXTS = {
     ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".xml", ".gradle", ".properties",
     # Data-definition / schema files — the project's data model and API contracts.
@@ -75,10 +79,17 @@ def _classify(path: str) -> tuple[str, str | None] | None:
     # Skip dependency lock files (incl. renamed npm variants like package-lock-*.json).
     if name in LOCK_FILES or name.startswith("package-lock") or name.endswith(".lock"):
         return None
+    # Skip minified/generated assets (e.g. *.min.css, *.min.js) — one huge line, pure noise.
+    if ".min." in name:
+        return None
     if name in CONFIG_NAMES or ext in CONFIG_EXTS:
         return ("config", None)
     if ext in CODE_LANGUAGES:
         return ("code", CODE_LANGUAGES[ext])
+    if ext in STYLE_EXTS:
+        return ("style", None)
+    if ext in MARKUP_EXTS:
+        return ("markup", None)
     if ext in DOC_EXTS:
         return ("doc", None)
     return None

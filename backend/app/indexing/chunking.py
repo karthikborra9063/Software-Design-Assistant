@@ -16,6 +16,8 @@ class ChunkType:
     METHOD = "method"
     DOC = "doc"            # README / markdown / docs
     CONFIG = "config"      # json / yaml / toml / Dockerfile ...
+    STYLE = "style"        # css / scss / less
+    MARKUP = "markup"      # html
     FALLBACK = "fallback"  # line/window chunk for unsupported file types
 
 
@@ -170,5 +172,11 @@ def chunk_file(text: str, category: str, language: str | None, rel_path: str) ->
         # Parsing failed or matched no definitions -> window the whole file.
         return _window_text(text, rel_path, language, ChunkType.FALLBACK, WINDOW_LINES, WINDOW_OVERLAP)
 
-    ctype = ChunkType.DOC if category == "doc" else ChunkType.CONFIG
+    # Non-code (docs/config/style/markup): no definitions to parse -> window as text.
+    ctype = {
+        "doc": ChunkType.DOC,
+        "config": ChunkType.CONFIG,
+        "style": ChunkType.STYLE,
+        "markup": ChunkType.MARKUP,
+    }.get(category, ChunkType.FALLBACK)
     return _window_text(text, rel_path, None, ctype, FALLBACK_WINDOW, FALLBACK_OVERLAP)

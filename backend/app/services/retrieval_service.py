@@ -18,11 +18,16 @@ from .vectorstore import get_vectorstore
 
 _SNIPPET_CHARS = 320
 
-# Breadth signal — forces the context card even if some chunk scored high.
+# Breadth signal — forces the context card even if some chunk scored high. Covers structural
+# questions AND meta/aggregate questions (counts, listings, languages) that vector search can't
+# answer — those are served from the precomputed project stats + file tree in the context card.
 _BROAD_TERMS = (
     "architecture", "structure", "overview", "high level", "high-level", "the project",
     "overall", "summarize", "summary", "how does the project", "which files", "where should",
     "add a feature", "add a new feature", "tech stack", "components", "organized",
+    # meta / aggregate:
+    "how many", "number of", "list all", "list the", "language", "languages",
+    "lines of code", "total files", "file count", "how many files", "how many functions",
 )
 
 
