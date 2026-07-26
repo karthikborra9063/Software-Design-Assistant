@@ -74,6 +74,8 @@ def build_repo_map(files: list[SourceFile], chunks: list[dict]) -> tuple[dict, d
         "frameworks": frameworks,
         "languages": dict(lang_counts),
         "total_files": len(files),
+        "total_chunks": len(chunks),
+        "definition_count": sum(len(v) for v in signatures.values()),
     }
     repo_map = {"signatures": signatures}
     return context_card, repo_map, dominant_language

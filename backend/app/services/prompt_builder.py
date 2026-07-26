@@ -66,18 +66,30 @@ _HISTORY_ANSWER_CHARS = 800  # truncate replayed prior answers to bound prompt t
 
 def _format_context_card(card: dict) -> str:
     lines = ["## Project overview"]
+    # Precomputed facts — use these to answer count/stat questions ("how many files/functions").
+    stats = []
+    if card.get("total_files") is not None:
+        stats.append(f"{card['total_files']} indexed files")
+    if card.get("total_chunks") is not None:
+        stats.append(f"{card['total_chunks']} chunks")
+    if card.get("definition_count"):
+        stats.append(f"{card['definition_count']} functions/classes")
+    if stats:
+        lines.append("Project stats: " + ", ".join(stats))
     if card.get("frameworks"):
         lines.append("Frameworks/build: " + ", ".join(card["frameworks"]))
     if card.get("languages"):
         langs = ", ".join(f"{k} ({v})" for k, v in card["languages"].items())
-        lines.append("Languages: " + langs)
+        lines.append("Languages (files per language): " + langs)
     if card.get("entrypoints"):
         lines.append("Entrypoints: " + ", ".join(card["entrypoints"]))
     if card.get("readme_excerpt"):
         lines.append("\nREADME excerpt:\n" + card["readme_excerpt"])
     tree = card.get("file_tree") or []
     if tree:
-        lines.append("\nFile tree:\n" + "\n".join(tree[:_MAX_TREE]))
+        shown = tree[:_MAX_TREE]
+        note = f" (showing {len(shown)} of {len(tree)})" if len(tree) > _MAX_TREE else ""
+        lines.append(f"\nFile tree{note}:\n" + "\n".join(shown))
     return "\n".join(lines)
 
 
