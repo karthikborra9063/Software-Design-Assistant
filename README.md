@@ -193,7 +193,7 @@ pytest
 
 ## Deployment & Hosting Choices
 
-Deployed across four free services — chosen so the whole system costs **$0**, needs **no Docker**,
+Deployed across four free services — chosen so the whole system costs **$0**,
 and keeps each concern independently swappable:
 
 | Piece | Host | Why |
