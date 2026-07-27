@@ -1,7 +1,7 @@
 // Renders assistant answers as Markdown: headings, lists, tables (GFM), and
 // syntax-highlighted code blocks with a per-block Copy button.
 
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
@@ -31,7 +31,9 @@ function CodeBlock({ children }) {
   );
 }
 
-export default function Markdown({ children }) {
+// Memoized: re-parses/re-highlights only when the answer text changes — so typing in the
+// composer (which re-renders Chat on every keystroke) doesn't re-render all past answers.
+function Markdown({ children }) {
   return (
     <div className="md">
       <ReactMarkdown
@@ -44,3 +46,5 @@ export default function Markdown({ children }) {
     </div>
   );
 }
+
+export default memo(Markdown);
